@@ -232,6 +232,38 @@
   .sheet-actions { display: flex; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
   .sheet-actions .solid { flex: 1; }
 
+  [hidden] { display: none !important; }
+
+  /* View switch */
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 22px; }
+  .tabs button { padding: 0 8px; white-space: nowrap; }
+  .tabs button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .task { scroll-margin-top: 16px; }
+  .task.flash { box-shadow: 0 0 0 3px var(--ink); }
+
+  /* Month by month */
+  .months h2.mh { margin: 28px 0 2px; font-size: 1.5rem; font-weight: 800; font-stretch: 72%; }
+  .months h2.mh:first-child { margin-top: 0; }
+  .months h2.mh.now { color: var(--overdue); }
+  .rates, .mnote { margin: 0 0 6px; font-size: 0.9rem; color: var(--ink-dim); }
+  .rates { margin-bottom: 18px; }
+  .mrows { list-style: none; margin: 0; padding: 0; }
+  button.mrow {
+    display: flex; align-items: flex-start; gap: 14px;
+    width: 100%; min-height: 56px; padding: 10px 0;
+    border: 0; border-bottom: 1px dashed var(--line); border-radius: 0;
+    font-weight: 400; text-align: left;
+  }
+  .md { flex: 0 0 4.6rem; line-height: 1.15; }
+  .md.wide { flex-basis: 7.4rem; }
+  .md b { display: block; font-size: 1.25rem; font-weight: 800; font-stretch: 72%; }
+  .md i { display: block; font-style: normal; font-size: 0.85rem; color: var(--ink-dim); }
+  .md.late b { color: var(--overdue); }
+  .mt strong { display: block; font-weight: 650; }
+  .mt small { display: block; font-size: 0.85rem; color: var(--ink-dim); }
+  .mempty { margin: 22px 0 0; color: var(--ink-dim); }
+  .mempty strong { color: var(--ink); font-weight: 650; margin-right: 6px; }
+
   /* Odometers panel */
   .odometers { margin: 0 0 22px; }
   .odometers[hidden] { display: none; }
@@ -274,7 +306,14 @@
 
   <p class="summary" id="summary" aria-live="polite"></p>
 
+  <div class="tabs" role="group" aria-label="View">
+    <button type="button" data-action="view" data-view="tasks" aria-pressed="true">Tasks</button>
+    <button type="button" data-action="view" data-view="months" aria-pressed="false">Month by month</button>
+  </div>
+
   <section class="odometers" id="odometers" hidden></section>
+
+  <section class="months" id="monthView" hidden></section>
 
   <main class="list" id="list"></main>
 
@@ -479,6 +518,11 @@ let editTaskId = null;        // which task the edit sheet is for (null = adding
 let odoKey = null;            // which vehicle the odometer sheet is for
 let pendingLow = null;        // lets you confirm an odometer number that looks too low
 
+const VIEW_KEY = 'home-upkeep-view';
+let view = 'tasks';           // 'tasks' or 'months'
+try { if (localStorage.getItem(VIEW_KEY) === 'months') view = 'months'; } catch (e) {}
+function saveView() { try { localStorage.setItem(VIEW_KEY, view); } catch (e) {} }
+
 /* ---------- Saving and loading ---------- */
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
@@ -571,6 +615,8 @@ function addMonths(d, n) {     // Jan 31 + 1 month = Feb 28 (not March 3)
   r.setDate(Math.min(d.getDate(), lastDay));
   return r;
 }
+function startOfToday() { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), t.getDate()); }
+function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
 function niceDate(s) {
   return parseDate(s).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
@@ -665,6 +711,88 @@ function info(t) {
   };
 }
 
+/* ---------- Planning ahead: when will each task come due? ---------- */
+
+// Miles per day this vehicle gets driven, worked out from the odometer readings
+// you have logged. Needs readings at least 30 days apart; otherwise null.
+function drivingRate(key) {
+  const pts = [];
+  state.tasks.forEach(t => {
+    if (vKey(t.system) === key) t.history.forEach(h => { if (h.odometer !== null) pts.push({ date: h.date, miles: h.odometer }); });
+  });
+  const v = state.odometers[key];
+  if (v) pts.push({ date: v.date, miles: v.miles });
+  if (pts.length < 2) return null;
+  pts.sort((a, b) => a.date.localeCompare(b.date));
+  const first = pts[0], last = pts[pts.length - 1];
+  const days = daysBetween(parseDate(first.date), parseDate(last.date));
+  const miles = last.miles - first.miles;
+  if (days < 30 || miles <= 0) return null;
+  return miles / days;
+}
+
+// Lists the dates a task comes due over the next 12 months.
+// Returns { items: [{date, est, now}], reason, later }
+//   est    = the date is an estimate based on driving speed
+//   now    = already overdue or due today (later dates assume you do it today)
+//   reason = why it cannot be scheduled yet
+//   later  = first due date, if it falls beyond the 12 months shown
+function schedule(t) {
+  const today = startOfToday();
+  const end = new Date(today.getFullYear(), today.getMonth() + 12, 1);
+  const out = { items: [], reason: '', later: null };
+
+  if (!t.history.length) { out.reason = 'Set a last-done date to schedule it.'; return out; }
+
+  const last = t.history[0];
+  const veh = state.odometers[vKey(t.system)];
+  const rate = t.intervalMiles ? drivingRate(vKey(t.system)) : null;
+  const stepDays = rate ? Math.max(1, Math.round(t.intervalMiles / rate)) : null;
+
+  // Possible next due dates: by time, and by miles (estimated)
+  const candidates = [];
+  if (t.intervalMonths) candidates.push({ date: addMonths(parseDate(last.date), t.intervalMonths), est: false });
+  if (t.intervalMiles) {
+    if (last.odometer !== null && veh && rate) {
+      const days = Math.round((last.odometer + t.intervalMiles - veh.miles) / rate);
+      candidates.push({ date: addDays(parseDate(veh.date), days), est: true });
+    } else if (!t.intervalMonths) {
+      out.reason = last.odometer === null ? 'Add an odometer reading when you mark it done.'
+                 : !veh ? 'Update the odometer to schedule it.'
+                 : 'Needs odometer readings about a month apart to estimate the date.';
+      return out;
+    }
+  }
+  candidates.sort((a, b) => a.date - b.date);
+  const first = candidates[0];
+
+  const isNow = info(t).status === 'overdue' || daysBetween(today, first.date) <= 0;
+  let prev;
+  if (isNow) {
+    out.items.push({ date: first.date, est: first.est, now: true });
+    prev = today;
+  } else if (first.date >= end) {
+    out.later = first.date;
+    return out;
+  } else {
+    out.items.push({ date: first.date, est: first.est });
+    prev = first.date;
+  }
+
+  // Repeat from there, assuming you do it when it comes due
+  for (let n = 0; n < 60; n++) {
+    const steps = [];
+    if (t.intervalMonths) steps.push({ date: addMonths(prev, t.intervalMonths), est: false });
+    if (stepDays) steps.push({ date: addDays(prev, stepDays), est: true });
+    steps.sort((a, b) => a.date - b.date);
+    const next = steps[0];
+    if (!next || next.date >= end) break;
+    out.items.push({ date: next.date, est: next.est });
+    prev = next.date;
+  }
+  return out;
+}
+
 function title(t) { return t.system ? t.system + ' ' + t.name.toLowerCase() : t.name; }
 
 function esc(s) {
@@ -680,8 +808,11 @@ function render() {
 
   renderSummary(items);
   renderOdometers();
+  renderTabs();
+  renderMonths();
 
   const list = document.getElementById('list');
+  list.hidden = view !== 'tasks';
   list.innerHTML = items.length
     ? items.map(({ t, i }) => cardHtml(t, i)).join('')
     : '<div class="empty">No tasks yet. Tap Add task to start your list.</div>';
@@ -719,7 +850,7 @@ function renderOdometers() {
   state.tasks.forEach(t => {
     if (t.intervalMiles && t.system && !vehicles.has(vKey(t.system))) vehicles.set(vKey(t.system), t.system);
   });
-  if (!vehicles.size) { el.hidden = true; el.innerHTML = ''; return; }
+  if (view !== 'tasks' || !vehicles.size) { el.hidden = true; el.innerHTML = ''; return; }
 
   el.hidden = false;
   el.innerHTML = '<h2>Odometers</h2>' + [...vehicles].map(([key, name]) => {
@@ -737,6 +868,96 @@ function renderOdometers() {
       <button type="button" data-action="odo" data-key="${esc(key)}">Update</button>
     </div>`;
   }).join('');
+}
+
+function renderTabs() {
+  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === view)));
+}
+
+function monthRowHtml(t, it, late) {
+  const i = info(t);
+  const left = late
+    ? `<span class="md wide late"><b>${esc(i.status === 'overdue' ? i.text : 'Due now')}</b></span>`
+    : `<span class="md"><b>${esc(it.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</b>
+         <i>${esc(it.date.toLocaleDateString(undefined, { weekday: 'short' }))}</i></span>`;
+  const sub = cadenceText(t) + (it.est ? '. Estimated from your driving.' : '.');
+  return `<li><button type="button" class="mrow" data-action="goto" data-id="${esc(t.id)}">${left}
+    <span class="mt"><strong>${esc(title(t))}</strong><small>${esc(sub)}</small></span></button></li>`;
+}
+
+function renderMonths() {
+  const el = document.getElementById('monthView');
+  if (view !== 'months') { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false;
+  if (!state.tasks.length) { el.innerHTML = '<div class="empty">Add a task to see it here.</div>'; return; }
+
+  const today = startOfToday();
+  const months = [];
+  for (let k = 0; k < 12; k++) months.push({ date: new Date(today.getFullYear(), today.getMonth() + k, 1), rows: [] });
+  const now = [], unscheduled = [], later = [];
+
+  state.tasks.forEach(t => {
+    const s = schedule(t);
+    if (s.reason) { unscheduled.push({ t, reason: s.reason }); return; }
+    if (s.later) later.push({ t, date: s.later });
+    s.items.forEach(it => {
+      if (it.now) { now.push({ t, it }); return; }
+      const idx = (it.date.getFullYear() - today.getFullYear()) * 12 + it.date.getMonth() - today.getMonth();
+      if (idx >= 0 && idx < 12) months[idx].rows.push({ t, it });
+    });
+  });
+
+  const monthName = (d) => d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  let out = '';
+
+  // How fast each vehicle is driven (used for mileage estimates)
+  const vehicles = new Map();
+  state.tasks.forEach(t => { if (t.intervalMiles && t.system && !vehicles.has(vKey(t.system))) vehicles.set(vKey(t.system), t.system); });
+  if (vehicles.size) {
+    out += '<p class="rates">Mileage dates are estimates. ' + [...vehicles].map(([key, name]) => {
+      const r = drivingRate(key);
+      return r ? name + ' is driven about ' + Math.round(r * 30.4).toLocaleString() + ' mi a month.'
+               : name + ' needs odometer readings a month or more apart to estimate.';
+    }).join(' ') + '</p>';
+  }
+
+  if (now.length) {
+    out += '<h2 class="mh now">Overdue or due now</h2><p class="mnote">Dates below assume you do these today.</p><ul class="mrows">'
+         + now.map(({ t, it }) => monthRowHtml(t, it, true)).join('') + '</ul>';
+  }
+
+  let emptyRun = [];
+  const flushEmpty = () => {
+    if (!emptyRun.length) return;
+    const a = emptyRun[0].date, b = emptyRun[emptyRun.length - 1].date;
+    const label = emptyRun.length === 1 ? monthName(a)
+      : a.toLocaleDateString(undefined, { month: 'long' }) + ' to ' + monthName(b);
+    out += `<p class="mempty"><strong>${esc(label)}</strong>Nothing due.</p>`;
+    emptyRun = [];
+  };
+  months.forEach(m => {
+    if (!m.rows.length) { emptyRun.push(m); return; }
+    flushEmpty();
+    m.rows.sort((x, y) => x.it.date - y.it.date || title(x.t).localeCompare(title(y.t)));
+    out += `<h2 class="mh">${esc(monthName(m.date))}</h2><ul class="mrows">`
+         + m.rows.map(({ t, it }) => monthRowHtml(t, it, false)).join('') + '</ul>';
+  });
+  flushEmpty();
+
+  if (later.length) {
+    out += '<h2 class="mh">Further out</h2><ul class="mrows">' + later.map(({ t, date }) => `
+      <li><button type="button" class="mrow" data-action="goto" data-id="${esc(t.id)}">
+        <span class="md wide"><b>${esc(date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }))}</b></span>
+        <span class="mt"><strong>${esc(title(t))}</strong><small>${esc(cadenceText(t))}.</small></span></button></li>`).join('') + '</ul>';
+  }
+
+  if (unscheduled.length) {
+    out += '<h2 class="mh">Not scheduled yet</h2><ul class="mrows">' + unscheduled.map(({ t, reason }) => `
+      <li><button type="button" class="mrow" data-action="goto" data-id="${esc(t.id)}">
+        <span class="mt"><strong>${esc(title(t))}</strong><small>${esc(reason)}</small></span></button></li>`).join('') + '</ul>';
+  }
+
+  el.innerHTML = out;
 }
 
 function cardHtml(t, i) {
@@ -802,6 +1023,17 @@ document.addEventListener('click', (e) => {
     case 'suggest': openSuggest(); break;
     case 'addSuggested': addSuggested(); break;
     case 'odo':     openOdoDialog(btn.dataset.key); break;
+    case 'view':    view = btn.dataset.view; saveView(); render(); break;
+    case 'goto': {
+      view = 'tasks'; saveView(); render();
+      const target = document.querySelector('.task[data-id="' + CSS.escape(btn.dataset.id) + '"]');
+      if (target) {
+        target.scrollIntoView({ block: 'start' });
+        target.classList.add('flash');
+        setTimeout(() => target.classList.remove('flash'), 1600);
+      }
+      break;
+    }
     case 'toggle':
       expanded.has(task.id) ? expanded.delete(task.id) : expanded.add(task.id);
       render(); break;
