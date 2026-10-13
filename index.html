@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#13232e">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Home Upkeep">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Home Upkeep</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap" rel="stylesheet">
+<style>
+  /* ---------- Colors: change these and the whole app changes ---------- */
+  :root {
+    --paper: #e6ebee;        /* page background (concrete) */
+    --card: #fbfcfc;
+    --ink: #13232e;          /* main text + buttons */
+    --ink-dim: #4f5f6a;
+    --line: #c3cdd3;
+
+    --overdue: #c0301a;
+    --soon: #8f5700;         /* text color for "due soon" */
+    --soon-bar: #e9a416;     /* stripe + gauge color for "due soon" */
+    --ok: #17745d;
+    --unset: #5d6c76;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0e1920;
+      --card: #162630;
+      --ink: #e9eff2;
+      --ink-dim: #95a6b0;
+      --line: #2a3d49;
+      --overdue: #ff7457;
+      --soon: #f2b53f;
+      --soon-bar: #f2b53f;
+      --ok: #46c8a3;
+      --unset: #8a9aa4;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 1rem;
+    line-height: 1.45;
+    min-height: 100vh;
+  }
+
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: calc(24px + env(safe-area-inset-top)) 20px calc(72px + env(safe-area-inset-bottom));
+  }
+
+  /* ---------- Header ---------- */
+  .top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(2.6rem, 11vw, 3.6rem);
+    font-weight: 850;
+    font-stretch: 70%;
+    line-height: 0.95;
+    letter-spacing: 0.005em;
+  }
+
+  .summary {
+    margin: 14px 0 28px;
+    font-size: 1.2rem;
+    font-weight: 500;
+    max-width: 30ch;
+  }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+    min-height: 44px;
+    border-radius: 8px;
+    border: 1.5px solid var(--ink);
+    padding: 0 18px;
+    font-weight: 650;
+    color: var(--ink);
+    background: transparent;
+  }
+  button.solid { background: var(--ink); color: var(--paper); }
+  button.danger { border-color: var(--overdue); color: var(--overdue); }
+  button.quiet { border-color: transparent; text-decoration: underline; text-underline-offset: 3px; padding: 0 6px; font-weight: 500; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 3px solid var(--ink);
+    outline-offset: 2px;
+  }
+
+  /* ---------- Task cards ---------- */
+  .list { display: grid; gap: 14px; }
+
+  .task {
+    --bar: var(--unset);
+    --txt: var(--unset);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 8px solid var(--bar);
+    border-radius: 6px;
+    padding: 18px 18px 16px;
+  }
+  .task.overdue { --bar: var(--overdue);  --txt: var(--overdue); }
+  .task.soon    { --bar: var(--soon-bar); --txt: var(--soon); }
+  .task.ok      { --bar: var(--ok);       --txt: var(--ok); }
+
+  .system {
+    margin: 0 0 2px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--ink-dim);
+  }
+
+  .task h2 {
+    margin: 0;
+    font-size: 1.9rem;
+    font-weight: 800;
+    font-stretch: 72%;
+    line-height: 1.05;
+  }
+
+  .when {
+    margin: 8px 0 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--txt);
+  }
+
+  .meta {
+    margin: 2px 0 0;
+    font-size: 0.92rem;
+    color: var(--ink-dim);
+  }
+
+  /* The gauge: how much of the interval has passed */
+  .gauge {
+    margin: 16px 0;
+    height: 12px;
+    border-radius: 3px;
+    background:
+      linear-gradient(90deg, transparent calc(25% - 1px), var(--card) calc(25% - 1px), var(--card) 25%, transparent 25%,
+                             transparent calc(50% - 1px), var(--card) calc(50% - 1px), var(--card) 50%, transparent 50%,
+                             transparent calc(75% - 1px), var(--card) calc(75% - 1px), var(--card) 75%, transparent 75%),
+      var(--line);
+    overflow: hidden;
+  }
+  .gauge span {
+    display: block;
+    height: 100%;
+    background: var(--bar);
+  }
+  .task.unset .gauge span { width: 0 !important; }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+  .details {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    font-size: 0.95rem;
+  }
+  .details h3 { margin: 14px 0 6px; font-size: 0.95rem; font-weight: 700; }
+  .details h3:first-child { margin-top: 0; }
+  .details p { margin: 0; color: var(--ink-dim); }
+  .history { list-style: none; margin: 0; padding: 0; }
+  .history li {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 2px 0; border-bottom: 1px dashed var(--line);
+  }
+  .details .row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+
+  .empty {
+    border: 1.5px dashed var(--line);
+    border-radius: 6px;
+    padding: 28px 20px;
+    text-align: center;
+    color: var(--ink-dim);
+  }
+
+  footer {
+    margin-top: 36px;
+    font-size: 0.9rem;
+    color: var(--ink-dim);
+  }
+
+  /* ---------- Dialogs (slide-up sheets) ---------- */
+  dialog {
+    width: min(480px, 100%);
+    max-height: 90vh;
+    margin: auto auto 0;
+    border: 0;
+    border-radius: 16px 16px 0 0;
+    padding: 22px 20px calc(22px + env(safe-area-inset-bottom));
+    background: var(--card);
+    color: var(--ink);
+  }
+  @media (min-width: 560px) { dialog { margin: auto; border-radius: 16px; } }
+  dialog::backdrop { background: rgba(8, 16, 22, 0.55); }
+
+  dialog h2 { margin: 0 0 14px; font-size: 1.6rem; font-weight: 800; font-stretch: 72%; }
+  label { display: block; margin: 14px 0 4px; font-weight: 600; font-size: 0.95rem; }
+  input, textarea {
+    width: 100%;
+    font: inherit;
+    font-size: 1rem;   /* 16px+ stops iPhone from zooming in on tap */
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1.5px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+  }
+  textarea { min-height: 96px; resize: vertical; }
+  .hint { margin: 4px 0 0; font-size: 0.85rem; color: var(--ink-dim); }
+  .sheet-actions { display: flex; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+  .sheet-actions .solid { flex: 1; }
+
+  /* Odometers panel */
+  .odometers { margin: 0 0 22px; }
+  .odometers[hidden] { display: none; }
+  .odometers h2 { margin: 0 0 6px; font-size: 1.1rem; font-weight: 800; font-stretch: 72%; }
+  .odo {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 0; border-bottom: 1px dashed var(--line);
+  }
+  .odo strong { display: block; }
+  .odo span { display: block; font-size: 0.9rem; color: var(--ink-dim); }
+  .odo.stale span { color: var(--soon); }
+
+  /* Suggested tasks sheet */
+  #suggestList h3 { margin: 22px 0 4px; font-size: 1.1rem; font-weight: 800; font-stretch: 72%; }
+  .pick {
+    display: flex; align-items: center; gap: 12px;
+    margin: 0; padding: 8px 0; min-height: 52px;
+    border-bottom: 1px dashed var(--line);
+    font-weight: 500; cursor: pointer;
+  }
+  .pick input { width: 22px; height: 22px; flex: none; accent-color: var(--ink); }
+  .pick small { display: block; color: var(--ink-dim); font-size: 0.85rem; font-weight: 400; }
+  .pick input:disabled + span { color: var(--ink-dim); }
+  .sheet-actions.sticky {
+    position: sticky; bottom: calc(-22px - env(safe-area-inset-bottom));
+    margin: 18px -20px calc(-22px - env(safe-area-inset-bottom));
+    padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+    background: var(--card); border-top: 1px solid var(--line);
+  }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Home<br>upkeep</h1>
+    <button type="button" class="solid" data-action="add">Add task</button>
+  </header>
+
+  <p class="summary" id="summary" aria-live="polite"></p>
+
+  <section class="odometers" id="odometers" hidden></section>
+
+  <main class="list" id="list"></main>
+
+  <footer>
+    <p id="storageNote">Your tasks are saved on this phone only.</p>
+    <button type="button" class="quiet" data-action="suggest">Browse suggested tasks</button>
+    <button type="button" class="quiet" data-action="backup">Back up or restore</button>
+  </footer>
+</div>
+
+<!-- Sheet: mark a task done -->
+<dialog id="doneDialog">
+  <form id="doneForm">
+    <h2 id="doneTitle">Mark done</h2>
+    <label for="doneDate">When did you do it?</label>
+    <input type="date" id="doneDate" required>
+    <div id="doneOdoWrap" hidden>
+      <label for="doneOdo">Odometer reading (miles)</label>
+      <input type="text" id="doneOdo" inputmode="numeric" placeholder="e.g. 45200" autocomplete="off">
+      <p class="hint">Needed to track miles for this task. For a past date, enter what the odometer read then. Leave blank to track time only.</p>
+    </div>
+    <p class="hint" id="doneMsg" role="status"></p>
+    <div class="sheet-actions">
+      <button type="submit" class="solid">Save</button>
+      <button type="button" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Sheet: add or edit a task -->
+<dialog id="taskDialog">
+  <form id="taskForm">
+    <h2 id="taskDialogTitle">Add task</h2>
+    <label for="fSystem">What is it for?</label>
+    <input id="fSystem" list="systemList" placeholder="A/C, Water heater, Pool..." required maxlength="40">
+    <datalist id="systemList"></datalist>
+
+    <label for="fName">What needs doing?</label>
+    <input id="fName" placeholder="Replace filter" required maxlength="60">
+
+    <label for="fMonths">Repeat every (months)</label>
+    <input id="fMonths" type="number" inputmode="numeric" min="1" max="120" placeholder="e.g. 6">
+
+    <label for="fMiles">Repeat every (miles)</label>
+    <input id="fMiles" type="text" inputmode="numeric" placeholder="e.g. 5000" autocomplete="off">
+    <p class="hint">Fill in one or both. With both, the task is due at whichever comes first. Miles are tracked per vehicle, using the name in "What is it for?" (like Civic).</p>
+    <p class="hint" id="taskMsg" role="status" style="color:var(--overdue)"></p>
+
+    <label for="fNotes">Notes (optional)</label>
+    <textarea id="fNotes" placeholder="Filter size, model number, who to call..." maxlength="500"></textarea>
+
+    <div class="sheet-actions">
+      <button type="submit" class="solid">Save task</button>
+      <button type="button" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Sheet: update odometer -->
+<dialog id="odoDialog">
+  <form id="odoForm">
+    <h2 id="odoTitle">Odometer</h2>
+    <label for="odoInput">Odometer reading (miles)</label>
+    <input type="text" id="odoInput" inputmode="numeric" placeholder="e.g. 45200" autocomplete="off">
+    <p class="hint" id="odoMsg" role="status"></p>
+    <div class="sheet-actions">
+      <button type="submit" class="solid">Save</button>
+      <button type="button" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Sheet: suggested tasks -->
+<dialog id="suggestDialog">
+  <h2>Suggested tasks</h2>
+  <p class="hint" style="margin-top:0">
+    Tick the ones that apply to your home. Skip anything you do not have (pool, gutters, a second car, and so on).
+    Intervals are common guesses, so check your manuals and edit them any time.
+  </p>
+  <div id="suggestList"></div>
+  <div class="sheet-actions sticky">
+    <button type="button" class="solid" data-action="addSuggested">Add selected</button>
+    <button type="button" data-close>Cancel</button>
+  </div>
+</dialog>
+
+<!-- Sheet: back up / restore -->
+<dialog id="backupDialog">
+  <h2>Back up or restore</h2>
+  <p class="hint" style="margin-top:0">
+    Copy this text and keep it somewhere safe (a note to yourself works). To restore on this
+    or another phone, paste a saved backup over the text below and tap Restore.
+  </p>
+  <label for="backupText">Backup text</label>
+  <textarea id="backupText" spellcheck="false" style="min-height:140px; font-family: ui-monospace, monospace; font-size: 0.85rem;"></textarea>
+  <p class="hint" id="backupMsg" role="status"></p>
+  <div class="sheet-actions">
+    <button type="button" class="solid" data-action="copyBackup">Copy</button>
+    <button type="button" data-action="restoreBackup">Restore from text</button>
+    <button type="button" data-close>Close</button>
+  </div>
+</dialog>
+
+<script>
+/* =====================================================================
+   HOME UPKEEP
+   How it works, in short:
+   - "state" holds your tasks and your vehicles' odometer readings.
+   - Each task remembers every time you did it (the date, and the odometer
+     reading if it is a mileage task).
+   - A task can repeat by TIME (months), by MILES, or both. With both, it
+     is due at whichever comes first.
+   - save() copies state into localStorage (a storage box in this browser).
+   - render() redraws the screen from state. Every change = update state,
+     save(), render().
+   ===================================================================== */
+
+const STORE_KEY = 'home-upkeep-v1';   // same key as before, so your saved data carries over
+const SOON_DAYS = 14;                 // "due soon" = within this many days
+
+// Starting tasks. Intervals are common guesses; edit any of them in the app.
+const DEFAULT_TASKS = [
+  { system: 'A/C', name: 'Filter', intervalMonths: 3,
+    notes: 'Many homes in hot climates do better changing it every 1 to 3 months. Write your filter size here.' },
+  { system: 'A/C', name: 'Capacitor', intervalMonths: 12,
+    notes: 'Ask your A/C tech to test it at the yearly tune-up. Replace it if it is weak.' },
+  { system: 'Water heater', name: 'Flush', intervalMonths: 12,
+    notes: 'Drain a few gallons to clear sediment. Check the manufacturer instructions for your model.' },
+  { system: 'Smoke/Carbon monoxide', name: 'Batteries', intervalMonths: 6,
+    notes: 'Test the alarms monthly. Replace the batteries on this schedule, or sooner if one chirps.' }
+];
+
+// Extra ideas shown in "Browse suggested tasks". Edit freely.
+const SUGGESTIONS = [
+  { group: 'Cooling and heating', items: [
+    { system: 'A/C', name: 'Clean condensate drain', intervalMonths: 3, notes: 'Pour a cup of white vinegar into the drain line access to help prevent clogs and water damage.' },
+    { system: 'A/C', name: 'Tune-up', intervalMonths: 12, notes: 'Professional check of coils, refrigerant, and electrical parts. Spring is a good time in hot climates.' },
+    { system: 'A/C', name: 'Rinse outdoor unit', intervalMonths: 6, notes: 'Turn the power off first. Clear leaves and debris, then gently rinse the fins with a hose.' },
+    { system: 'Thermostat', name: 'Batteries', intervalMonths: 12, notes: 'If yours uses batteries, replace them before the hot or cold season.' },
+    { system: 'Evaporative cooler', name: 'Replace pads', intervalMonths: 12, notes: 'Only if you have one. Also drain and clean the pan.' },
+    { system: 'Heating', name: 'Inspection', intervalMonths: 12, notes: 'Have the furnace or heat pump checked before it gets cold.' }
+  ]},
+  { group: 'Water and plumbing', items: [
+    { system: 'Water heater', name: 'Test pressure relief valve', intervalMonths: 12, notes: 'Lift the lever briefly and let it snap back. Keep a bucket handy and check your manual first.' },
+    { system: 'Water heater', name: 'Check anode rod', intervalMonths: 36, notes: 'Helps prevent tank corrosion. Many plumbers suggest every 3 to 5 years.' },
+    { system: 'Refrigerator', name: 'Water filter', intervalMonths: 6, notes: 'Most manufacturers recommend replacing it about every 6 months.' },
+    { system: 'Water softener', name: 'Check salt', intervalMonths: 1, notes: 'Only if you have one. Keep the salt level above the water line.' },
+    { system: 'Plumbing', name: 'Check under sinks for leaks', intervalMonths: 6, notes: 'Look under every sink and around the toilets for drips or damp spots.' },
+    { system: 'Plumbing', name: 'Exercise main shutoff valve', intervalMonths: 12, notes: 'Turn it off and on so it does not seize. Know where it is in an emergency.' },
+    { system: 'Faucets', name: 'Clean aerators', intervalMonths: 12, notes: 'Unscrew the tip and soak it in vinegar to clear mineral buildup.' }
+  ]},
+  { group: 'Safety', items: [
+    { system: 'Smoke/Carbon monoxide', name: 'Test alarms', intervalMonths: 1, notes: 'Press the test button on every alarm.' },
+    { system: 'Smoke/Carbon monoxide', name: 'Replace alarm units', intervalMonths: 120, notes: 'Smoke alarms last about 10 years. Check the date printed on the back. CO alarms can expire sooner.' },
+    { system: 'Fire extinguisher', name: 'Check gauge', intervalMonths: 12, notes: 'Make sure the needle is in the green and nothing is blocking access.' },
+    { system: 'Dryer', name: 'Clean vent', intervalMonths: 12, notes: 'Lint buildup in the vent is a fire risk. Disconnect and clear the duct.' },
+    { system: 'Outlets', name: 'Test GFCI', intervalMonths: 3, notes: 'Press TEST, then RESET, on bathroom, kitchen, garage, and outdoor outlets. Manufacturers suggest monthly.' },
+    { system: 'Garage door', name: 'Test safety reverse', intervalMonths: 6, notes: 'Lay a board flat under the door. It should reverse when it touches it.' }
+  ]},
+  { group: 'Appliances', items: [
+    { system: 'Refrigerator', name: 'Vacuum coils', intervalMonths: 12, notes: 'Unplug first, then vacuum the dust from the coils.' },
+    { system: 'Dishwasher', name: 'Clean filter', intervalMonths: 3, notes: 'Pull out the bottom rack and rinse the filter under the tap.' },
+    { system: 'Washing machine', name: 'Run cleaning cycle', intervalMonths: 3, notes: 'Run a hot cycle with washer cleaner and wipe the door gasket.' },
+    { system: 'Range hood', name: 'Clean filter', intervalMonths: 3, notes: 'Soak the metal filter in hot water with degreaser.' }
+  ]},
+  { group: 'Outside', items: [
+    { system: 'Sprinklers', name: 'Check drip lines and emitters', intervalMonths: 3, notes: 'Run each zone and look for leaks, clogs, or dry spots.' },
+    { system: 'Pest control', name: 'Service', intervalMonths: 3, notes: 'Quarterly service is common. Note the company and phone number here.' },
+    { system: 'Termites', name: 'Inspection', intervalMonths: 12, notes: 'An annual inspection is common in warm climates.' },
+    { system: 'Roof', name: 'Look for damage', intervalMonths: 12, notes: 'Check tiles or shingles and flashing, especially after a big storm.' },
+    { system: 'Doors and windows', name: 'Check seals', intervalMonths: 12, notes: 'Look for gaps and cracked weatherstripping or caulk. Good seals lower cooling bills.' },
+    { system: 'Exterior', name: 'Check stucco and paint', intervalMonths: 12, notes: 'Look for cracks and peeling, and seal them before water gets in.' },
+    { system: 'Pool', name: 'Clean filter', intervalMonths: 3, notes: 'Only if you have a pool. Follow the manufacturer for your filter type.' },
+    { system: 'Gutters', name: 'Clean out', intervalMonths: 6, notes: 'Only if you have them.' }
+  ]},
+  { group: 'Cars', items: [
+    { system: 'Car', name: 'Oil change', intervalMonths: 6, intervalMiles: 5000, notes: 'Due at whichever comes first, time or miles. Many cars say 5,000 to 7,500 miles, and synthetic oil can go longer. Check your manual.' },
+    { system: 'Car', name: 'Tire rotation', intervalMonths: 6, intervalMiles: 6000, notes: 'Often done with the oil change. Many cars say every 5,000 to 8,000 miles.' },
+    { system: 'Car', name: 'Check tire pressure', intervalMonths: 1, notes: 'Check when the tires are cold. The right pressure is on the sticker inside the driver door.' },
+    { system: 'Car', name: 'Windshield wipers', intervalMonths: 12, notes: 'Replace when they streak or chatter. Sun and heat wear rubber out faster.' },
+    { system: 'Car', name: 'Check fluids', intervalMonths: 3, notes: 'Oil, coolant, brake fluid, washer fluid, and power steering if your car has it.' },
+    { system: 'Car', name: 'Engine air filter', intervalMonths: 12, intervalMiles: 15000, notes: 'Dusty roads and dry climates can mean sooner. Write the part number here.' },
+    { system: 'Car', name: 'Cabin air filter', intervalMonths: 12, intervalMiles: 15000, notes: 'Replace sooner if the A/C smells musty or airflow feels weak.' },
+    { system: 'Car', name: 'Test battery', intervalMonths: 12, notes: 'Many shops test it free. Heat shortens battery life, so test yearly once it is a few years old.' },
+    { system: 'Car', name: 'Brake inspection', intervalMonths: 12, intervalMiles: 12000, notes: 'Have pads and rotors checked, and sooner if you hear squealing or grinding.' },
+    { system: 'Car', name: 'Brake fluid flush', intervalMonths: 24, notes: 'Many manufacturers suggest about every 2 to 3 years. Check your manual.' },
+    { system: 'Car', name: 'Coolant flush', intervalMonths: 60, notes: 'Intervals vary a lot by car, so check your manual.' },
+    { system: 'Car', name: 'Registration renewal', intervalMonths: 12, notes: 'Set the date you last renewed, and the app shows when the next one is due.' }
+  ]},
+  { group: 'Paperwork and prep', items: [
+    { system: 'Insurance', name: 'Review coverage', intervalMonths: 12, notes: 'Check that coverage still matches what your home and belongings are worth.' },
+    { system: 'Emergency kit', name: 'Check supplies', intervalMonths: 12, notes: 'Replace flashlight batteries, water, and anything expired.' },
+    { system: 'Home inventory', name: 'Update photos', intervalMonths: 12, notes: 'Photograph valuables and keep receipts for insurance claims.' }
+  ]}
+];
+
+let state = { tasks: [], odometers: {} };
+let storageWorks = true;
+const expanded = new Set();   // which cards have "Details" open
+let doneTaskId = null;        // which task the "done" sheet is for
+let editTaskId = null;        // which task the edit sheet is for (null = adding)
+let odoKey = null;            // which vehicle the odometer sheet is for
+let pendingLow = null;        // lets you confirm an odometer number that looks too low
+
+/* ---------- Saving and loading ---------- */
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function makeTask(t) {
+  return {
+    id: uid(), system: t.system, name: t.name,
+    intervalMonths: t.intervalMonths || null,
+    intervalMiles: t.intervalMiles || null,
+    notes: t.notes || '', history: []
+  };
+}
+
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  catch (e) { storageWorks = false; }
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const parsed = cleanState(JSON.parse(raw));
+      if (parsed) return parsed;
+    }
+  } catch (e) { storageWorks = false; }
+  return { tasks: DEFAULT_TASKS.map(makeTask), odometers: {} };   // first run
+}
+
+// Makes sure loaded/imported data has the right shape, and upgrades older data.
+// (Older versions stored history as plain dates; now each entry is {date, odometer}.)
+function cleanState(data) {
+  if (!data || !Array.isArray(data.tasks)) return null;
+  const isDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const toMiles = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Math.round(Number(v));
+    return isFinite(n) && n >= 0 ? n : null;
+  };
+
+  const tasks = data.tasks.filter(t => t && typeof t.name === 'string').map(t => {
+    const miles = toMiles(t.intervalMiles) || null;               // 0 counts as "none"
+    let months = parseInt(t.intervalMonths, 10);
+    months = months > 0 ? Math.min(120, months) : null;
+    if (!months && !miles) months = 12;
+
+    const seen = new Set();
+    const history = (Array.isArray(t.history) ? t.history : [])
+      .map(h => typeof h === 'string' ? { date: h, odometer: null }
+                                      : (h && { date: h.date, odometer: toMiles(h.odometer) }))
+      .filter(h => h && isDate(h.date) && !seen.has(h.date) && seen.add(h.date))
+      .sort((a, b) => b.date.localeCompare(a.date));              // newest first
+
+    return {
+      id: typeof t.id === 'string' ? t.id : uid(),
+      system: String(t.system || '').slice(0, 40),
+      name: String(t.name).slice(0, 60),
+      intervalMonths: months,
+      intervalMiles: miles,
+      notes: String(t.notes || '').slice(0, 500),
+      history
+    };
+  });
+
+  const odometers = {};
+  if (data.odometers && typeof data.odometers === 'object') {
+    Object.keys(data.odometers).forEach((k) => {
+      const o = data.odometers[k];
+      const m = o ? toMiles(o.miles) : null;
+      if (m !== null && isDate(o.date)) {
+        odometers[String(k).slice(0, 60)] = { name: String(o.name || k).slice(0, 40), miles: m, date: o.date };
+      }
+    });
+  }
+  return { tasks, odometers };
+}
+
+/* ---------- Dates (kept as plain YYYY-MM-DD text, in local time) ---------- */
+const DAY_MS = 86400000;
+function fmt(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function parseDate(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+function daysBetween(a, b) {   // whole days from a to b
+  return Math.round((Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) -
+                     Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) / DAY_MS);
+}
+function addMonths(d, n) {     // Jan 31 + 1 month = Feb 28 (not March 3)
+  const r = new Date(d.getFullYear(), d.getMonth() + n, 1);
+  const lastDay = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+  r.setDate(Math.min(d.getDate(), lastDay));
+  return r;
+}
+function niceDate(s) {
+  return parseDate(s).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+function fmtMiles(n) { return Number(n).toLocaleString() + ' mi'; }
+function parseMiles(text) {    // whole number of miles, or null if it is not one
+  const s = String(text).replace(/[,\s]/g, '');
+  if (!/^\d+$/.test(s)) return null;
+  return parseInt(s, 10);
+}
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+function vKey(system) { return String(system || '').trim().toLowerCase(); }   // one vehicle per "what is it for" name
+
+function intervalText(m) {
+  if (m === 1) return 'month';
+  if (m === 12) return 'year';
+  if (m % 12 === 0) return (m / 12) + ' years';
+  return m + ' months';
+}
+// "Every 6 months or 5,000 mi"
+function cadenceText(t) {
+  const bits = [];
+  if (t.intervalMonths) bits.push(intervalText(t.intervalMonths));
+  if (t.intervalMiles) bits.push(fmtMiles(t.intervalMiles));
+  return 'Every ' + bits.join(' or ');
+}
+
+/* ---------- Working out where each task stands ---------- */
+const SEVERITY = { ok: 0, soon: 1, overdue: 2 };
+
+// How the time limit is doing
+function timePart(t, last) {
+  const lastD = parseDate(last.date);
+  const due = addMonths(lastD, t.intervalMonths);
+  const today = new Date();
+  const daysLeft = daysBetween(today, due);
+  const total = Math.max(1, daysBetween(lastD, due));
+  const raw = daysBetween(lastD, today) / total;      // 1.0 = interval used up
+  const status = daysLeft < 0 ? 'overdue' : daysLeft <= SOON_DAYS ? 'soon' : 'ok';
+  let text;
+  if (daysLeft < 0) text = plural(-daysLeft, 'day') + ' overdue';
+  else if (daysLeft === 0) text = 'Due today';
+  else if (daysLeft === 1) text = 'Due tomorrow';
+  else if (daysLeft <= 60) text = 'Due in ' + plural(daysLeft, 'day');
+  else text = 'Due ' + niceDate(fmt(due));
+  return { kind: 'time', status, raw, text };
+}
+
+// How the mileage limit is doing (null if we do not have the readings we need)
+function milesPart(t, last) {
+  const veh = state.odometers[vKey(t.system)];
+  if (last.odometer === null || !veh) return null;
+  const dueAt = last.odometer + t.intervalMiles;
+  const left = dueAt - veh.miles;
+  const soonAt = Math.min(1000, Math.max(100, t.intervalMiles * 0.1));
+  const status = left < 0 ? 'overdue' : left <= soonAt ? 'soon' : 'ok';
+  const raw = (veh.miles - last.odometer) / t.intervalMiles;
+  let text;
+  if (left < 0) text = fmtMiles(-left) + ' overdue';
+  else if (left === 0) text = 'Due now';
+  else if (left <= 2000) text = 'Due in ' + fmtMiles(left);
+  else text = 'Due at ' + fmtMiles(dueAt);
+  return { kind: 'miles', status, raw, text };
+}
+
+function lowerFirst(s) { return s.charAt(0).toLowerCase() + s.slice(1); }
+
+function info(t) {
+  if (!t.history.length) return { status: 'unset', text: 'Not tracked yet', raw: 0 };
+  const last = t.history[0];                          // history is newest first
+
+  const parts = [];
+  if (t.intervalMonths) parts.push(timePart(t, last));
+
+  let note = '';
+  if (t.intervalMiles) {
+    const m = milesPart(t, last);
+    if (m) parts.push(m);
+    else if (last.odometer === null) note = 'Miles: add an odometer reading when you mark it done.';
+    else note = 'Miles: update the odometer to track this.';
+  }
+
+  if (!parts.length) return { status: 'unset', text: 'Needs an odometer reading', raw: 0, last, note };
+
+  // Whichever limit is closest wins
+  parts.sort((a, b) => SEVERITY[b.status] - SEVERITY[a.status] || b.raw - a.raw);
+  const main = parts[0], other = parts[1];
+  return {
+    status: main.status, text: main.text, raw: main.raw, pct: clamp01(main.raw), last,
+    other: other ? (other.kind === 'time' ? 'Time: ' : 'Miles: ') + lowerFirst(other.text) : '',
+    note
+  };
+}
+
+function title(t) { return t.system ? t.system + ' ' + t.name.toLowerCase() : t.name; }
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* ---------- Drawing the screen ---------- */
+const RANK = { overdue: 0, soon: 1, unset: 2, ok: 3 };
+
+function render() {
+  const items = state.tasks.map(t => ({ t, i: info(t) }));
+  items.sort((a, b) => RANK[a.i.status] - RANK[b.i.status] || (b.i.raw || 0) - (a.i.raw || 0));
+
+  renderSummary(items);
+  renderOdometers();
+
+  const list = document.getElementById('list');
+  list.innerHTML = items.length
+    ? items.map(({ t, i }) => cardHtml(t, i)).join('')
+    : '<div class="empty">No tasks yet. Tap Add task to start your list.</div>';
+
+  document.getElementById('storageNote').textContent = storageWorks
+    ? 'Your tasks are saved on this phone only. Back them up once in a while.'
+    : 'This browser is not saving data (private mode?). Changes will be lost when you close the page.';
+
+  document.getElementById('systemList').innerHTML =
+    [...new Set(state.tasks.map(t => t.system).filter(Boolean))].map(s => `<option value="${esc(s)}">`).join('');
+}
+
+function renderSummary(items) {
+  const el = document.getElementById('summary');
+  const count = (s) => items.filter(x => x.i.status === s).length;
+  const first = (s) => items.find(x => x.i.status === s);
+
+  if (!items.length) { el.textContent = 'Nothing to track yet.'; return; }
+  if (count('overdue')) {
+    el.textContent = count('overdue') + ' overdue. Start with ' + title(first('overdue').t) + '.';
+  } else if (count('soon')) {
+    el.textContent = count('soon') + ' due soon. Next up: ' + title(first('soon').t) + '.';
+  } else if (count('unset')) {
+    el.textContent = 'Set a last-done date on ' + plural(count('unset'), 'task') + ' to start tracking.';
+  } else {
+    const next = first('ok');
+    el.textContent = 'All caught up. Next: ' + title(next.t) + ', ' + lowerFirst(next.i.text) + '.';
+  }
+}
+
+// The "Odometers" panel: one row per vehicle that has a mileage task
+function renderOdometers() {
+  const el = document.getElementById('odometers');
+  const vehicles = new Map();
+  state.tasks.forEach(t => {
+    if (t.intervalMiles && t.system && !vehicles.has(vKey(t.system))) vehicles.set(vKey(t.system), t.system);
+  });
+  if (!vehicles.size) { el.hidden = true; el.innerHTML = ''; return; }
+
+  el.hidden = false;
+  el.innerHTML = '<h2>Odometers</h2>' + [...vehicles].map(([key, name]) => {
+    const v = state.odometers[key];
+    let line = 'Not set. Add a reading to track miles.';
+    let stale = true;
+    if (v) {
+      const age = daysBetween(parseDate(v.date), new Date());
+      line = fmtMiles(v.miles) + ', updated ' + (age <= 0 ? 'today' : age === 1 ? 'yesterday' : plural(age, 'day') + ' ago');
+      stale = age > 30;
+    }
+    return `
+    <div class="odo ${stale ? 'stale' : ''}">
+      <div><strong>${esc(name)}</strong><span>${esc(line)}</span></div>
+      <button type="button" data-action="odo" data-key="${esc(key)}">Update</button>
+    </div>`;
+  }).join('');
+}
+
+function cardHtml(t, i) {
+  const open = expanded.has(t.id);
+  const metaBits = [cadenceText(t)];
+  if (i.last) {
+    metaBits.push('Last done ' + niceDate(i.last.date) + (i.last.odometer !== null ? ' at ' + fmtMiles(i.last.odometer) : ''));
+  }
+  const pct = Math.round((i.pct || 0) * 100);
+  const gaugeLabel = i.status === 'unset' ? 'No reading yet' : pct + ' percent used';
+  const extra = [i.other, i.note].filter(Boolean).join(' ');
+
+  return `
+  <article class="task ${i.status}" data-id="${esc(t.id)}">
+    ${t.system ? `<p class="system">${esc(t.system)}</p>` : ''}
+    <h2>${esc(t.name)}</h2>
+    <p class="when">${esc(i.text)}</p>
+    <p class="meta">${esc(metaBits.join('. '))}.</p>
+    ${extra ? `<p class="meta">${esc(extra)}</p>` : ''}
+    <div class="gauge" role="img" aria-label="${gaugeLabel}"><span style="width:${pct}%"></span></div>
+    <div class="actions">
+      <button type="button" class="solid" data-action="done">${t.history.length ? 'Mark done' : 'Set last done date'}</button>
+      <button type="button" data-action="toggle" aria-expanded="${open}">${open ? 'Hide details' : 'Details'}</button>
+    </div>
+    ${open ? detailsHtml(t) : ''}
+  </article>`;
+}
+
+function detailsHtml(t) {
+  const hist = t.history.length
+    ? `<ul class="history">${t.history.map(h => `
+        <li><span>${esc(niceDate(h.date))}${h.odometer !== null ? ' at ' + esc(fmtMiles(h.odometer)) : ''}</span>
+        <button type="button" class="quiet" data-action="removeDate" data-date="${esc(h.date)}">Remove</button></li>`).join('')}</ul>`
+    : '<p>Nothing logged yet.</p>';
+  return `
+  <div class="details">
+    <h3>Notes</h3>
+    ${t.notes ? `<p style="white-space:pre-wrap">${esc(t.notes)}</p>` : '<p>No notes.</p>'}
+    <h3>History</h3>
+    ${hist}
+    <div class="row">
+      <button type="button" data-action="edit">Edit task</button>
+      <button type="button" class="danger" data-action="delete">Delete task</button>
+    </div>
+  </div>`;
+}
+
+/* ---------- Clicks ---------- */
+function getTask(id) { return state.tasks.find(t => t.id === id); }
+
+document.addEventListener('click', (e) => {
+  const closeBtn = e.target.closest('[data-close]');
+  if (closeBtn) { closeBtn.closest('dialog').close(); return; }
+
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const card = btn.closest('.task');
+  const task = card ? getTask(card.dataset.id) : null;
+
+  switch (btn.dataset.action) {
+    case 'add':     openTaskDialog(null); break;
+    case 'backup':  openBackup(); break;
+    case 'suggest': openSuggest(); break;
+    case 'addSuggested': addSuggested(); break;
+    case 'odo':     openOdoDialog(btn.dataset.key); break;
+    case 'toggle':
+      expanded.has(task.id) ? expanded.delete(task.id) : expanded.add(task.id);
+      render(); break;
+    case 'done':    openDoneDialog(task); break;
+    case 'edit':    openTaskDialog(task); break;
+    case 'delete':
+      if (confirm('Delete "' + title(task) + '" and its history?')) {
+        state.tasks = state.tasks.filter(t => t.id !== task.id);
+        save(); render();
+      }
+      break;
+    case 'removeDate':
+      task.history = task.history.filter(h => h.date !== btn.dataset.date);
+      save(); render(); break;
+    case 'copyBackup': copyBackup(); break;
+    case 'restoreBackup': restoreBackup(); break;
+  }
+});
+
+/* ---------- Odometer helpers ---------- */
+function setOdometer(system, miles, date) {
+  state.odometers[vKey(system)] = { name: system, miles, date };
+}
+
+/* ---------- Sheet: mark done ---------- */
+const doneDialog = document.getElementById('doneDialog');
+const doneDate = document.getElementById('doneDate');
+const doneOdoWrap = document.getElementById('doneOdoWrap');
+const doneOdo = document.getElementById('doneOdo');
+const doneMsg = document.getElementById('doneMsg');
+
+function openDoneDialog(task) {
+  doneTaskId = task.id;
+  pendingLow = null;
+  document.getElementById('doneTitle').textContent = task.history.length ? 'Mark done' : 'Set last done date';
+  doneDate.max = fmt(new Date());
+  doneDate.value = fmt(new Date());
+  doneOdoWrap.hidden = !task.intervalMiles;
+  const veh = state.odometers[vKey(task.system)];
+  doneOdo.value = veh ? veh.miles : '';
+  doneMsg.textContent = '';
+  doneDialog.showModal();
+}
+
+document.getElementById('doneForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const task = getTask(doneTaskId);
+  if (!task || !doneDate.value) { doneDialog.close(); return; }
+
+  let odo = null;
+  if (task.intervalMiles && doneOdo.value.trim() !== '') {
+    odo = parseMiles(doneOdo.value);
+    if (odo === null) { doneMsg.textContent = 'Enter the odometer as a whole number, or leave it blank.'; return; }
+    const veh = state.odometers[vKey(task.system)];
+    if (veh && doneDate.value >= veh.date && odo < veh.miles && pendingLow !== odo) {
+      pendingLow = odo;
+      doneMsg.textContent = 'That is lower than the last reading (' + fmtMiles(veh.miles) + '). Check the number, or tap Save again to use it anyway.';
+      return;
+    }
+  }
+
+  const existing = task.history.find(h => h.date === doneDate.value);
+  if (existing) { if (odo !== null) existing.odometer = odo; }
+  else task.history.push({ date: doneDate.value, odometer: odo });
+  task.history.sort((a, b) => b.date.localeCompare(a.date));
+
+  // Keep the vehicle's odometer up to date, unless we already have a newer reading
+  if (odo !== null) {
+    const veh = state.odometers[vKey(task.system)];
+    if (!veh || doneDate.value >= veh.date) setOdometer(task.system, odo, doneDate.value);
+  }
+  save(); render();
+  doneDialog.close();
+});
+
+/* ---------- Sheet: update odometer ---------- */
+const odoDialog = document.getElementById('odoDialog');
+const odoInput = document.getElementById('odoInput');
+const odoMsg = document.getElementById('odoMsg');
+
+function vehicleName(key) {
+  const t = state.tasks.find(x => vKey(x.system) === key);
+  return t ? t.system : key;
+}
+
+function openOdoDialog(key) {
+  odoKey = key;
+  pendingLow = null;
+  const v = state.odometers[key];
+  document.getElementById('odoTitle').textContent = 'Odometer: ' + vehicleName(key);
+  odoInput.value = v ? v.miles : '';
+  odoMsg.textContent = v ? 'Last reading: ' + fmtMiles(v.miles) + ' on ' + niceDate(v.date) + '.' : 'Enter what the odometer reads now.';
+  odoDialog.showModal();
+}
+
+document.getElementById('odoForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const miles = parseMiles(odoInput.value);
+  if (miles === null) { odoMsg.textContent = 'Enter the odometer as a whole number, like 45200.'; return; }
+  const v = state.odometers[odoKey];
+  if (v && miles < v.miles && pendingLow !== miles) {
+    pendingLow = miles;
+    odoMsg.textContent = 'That is lower than the last reading (' + fmtMiles(v.miles) + '). Check the number, or tap Save again to use it anyway.';
+    return;
+  }
+  setOdometer(vehicleName(odoKey), miles, fmt(new Date()));
+  save(); render();
+  odoDialog.close();
+});
+
+/* ---------- Sheet: add / edit task ---------- */
+const taskDialog = document.getElementById('taskDialog');
+const fSystem = document.getElementById('fSystem');
+const fName = document.getElementById('fName');
+const fMonths = document.getElementById('fMonths');
+const fMiles = document.getElementById('fMiles');
+const fNotes = document.getElementById('fNotes');
+const taskMsg = document.getElementById('taskMsg');
+
+function openTaskDialog(task) {
+  editTaskId = task ? task.id : null;
+  document.getElementById('taskDialogTitle').textContent = task ? 'Edit task' : 'Add task';
+  fSystem.value = task ? task.system : '';
+  fName.value = task ? task.name : '';
+  fMonths.value = task ? (task.intervalMonths || '') : 12;
+  fMiles.value = task ? (task.intervalMiles || '') : '';
+  fNotes.value = task ? task.notes : '';
+  taskMsg.textContent = '';
+  taskDialog.showModal();
+}
+
+document.getElementById('taskForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  let months = parseInt(fMonths.value, 10);
+  months = months > 0 ? Math.min(120, months) : null;
+  let miles = fMiles.value.trim() === '' ? null : parseMiles(fMiles.value);
+  if (miles === 0) miles = null;
+  if (fMiles.value.trim() !== '' && miles === null) { taskMsg.textContent = 'Miles should be a whole number, like 5000, or left blank.'; return; }
+  if (!months && !miles) { taskMsg.textContent = 'Enter months, miles, or both.'; return; }
+
+  const fields = { system: fSystem.value.trim(), name: fName.value.trim(), intervalMonths: months, intervalMiles: miles, notes: fNotes.value.trim() };
+
+  if (editTaskId) {
+    const task = getTask(editTaskId);
+    const oldKey = vKey(task.system);
+    Object.assign(task, fields);
+    // Renaming "Car" to "Civic"? Bring the odometer reading along.
+    const newKey = vKey(task.system);
+    if (newKey !== oldKey) {
+      if (state.odometers[oldKey] && !state.odometers[newKey]) {
+        state.odometers[newKey] = Object.assign({}, state.odometers[oldKey], { name: task.system });
+      }
+      // Other tasks still labeled with the old name? Offer to rename them too.
+      const siblings = state.tasks.filter(x => x.id !== task.id && vKey(x.system) === oldKey);
+      if (siblings.length && confirm('Also rename ' + plural(siblings.length, 'other task') +
+                                     ' labeled "' + (siblings[0].system) + '" to "' + task.system + '"?')) {
+        siblings.forEach(x => { x.system = task.system; });
+      }
+    }
+  } else {
+    state.tasks.push(makeTask(fields));
+  }
+  save(); render();
+  taskDialog.close();
+});
+
+/* ---------- Sheet: suggested tasks ---------- */
+const suggestDialog = document.getElementById('suggestDialog');
+const suggestList = document.getElementById('suggestList');
+const taskKey = (system, name) => (system + '|' + name).toLowerCase();
+
+function openSuggest() {
+  const have = new Set(state.tasks.map(t => taskKey(t.system, t.name)));
+  suggestList.innerHTML = SUGGESTIONS.map((g, gi) => `
+    <h3>${esc(g.group)}</h3>
+    ${g.items.map((it, ii) => {
+      const added = have.has(taskKey(it.system, it.name));
+      return `<label class="pick">
+        <input type="checkbox" data-g="${gi}" data-i="${ii}" ${added ? 'checked disabled' : ''}>
+        <span>${esc(it.system)}: ${esc(it.name.toLowerCase())}
+          <small>${added ? 'Already on your list' : esc(cadenceText(it))}</small></span>
+      </label>`;
+    }).join('')}`).join('');
+  suggestDialog.showModal();
+}
+
+function addSuggested() {
+  const boxes = suggestList.querySelectorAll('input[type=checkbox]:checked:not(:disabled)');
+  boxes.forEach(b => state.tasks.push(makeTask(SUGGESTIONS[b.dataset.g].items[b.dataset.i])));
+  if (boxes.length) { save(); render(); }
+  suggestDialog.close();
+}
+
+/* ---------- Sheet: backup / restore ---------- */
+const backupDialog = document.getElementById('backupDialog');
+const backupText = document.getElementById('backupText');
+const backupMsg = document.getElementById('backupMsg');
+
+function openBackup() {
+  backupText.value = JSON.stringify(state);
+  backupMsg.textContent = '';
+  backupDialog.showModal();
+}
+
+function copyBackup() {
+  const text = JSON.stringify(state);
+  backupText.value = text;
+  const fallback = () => { backupText.select(); backupMsg.textContent = 'Text selected. Use your phone\'s Copy option.'; };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => { backupMsg.textContent = 'Copied. Paste it somewhere safe.'; }, fallback);
+  } else { fallback(); }
+}
+
+function restoreBackup() {
+  let parsed = null;
+  try { parsed = cleanState(JSON.parse(backupText.value)); } catch (e) {}
+  if (!parsed) { backupMsg.textContent = 'That text is not a valid backup. Nothing was changed.'; return; }
+  if (!confirm('Replace your current tasks with this backup (' + plural(parsed.tasks.length, 'task') + ')?')) return;
+  state = parsed;
+  expanded.clear();
+  save(); render();
+  backupMsg.textContent = 'Restored.';
+}
+
+/* ---------- Start ---------- */
+state = load();
+save();      // stores the starter tasks on first run, and saves any upgraded data
+render();
+
+// Ask the browser to keep our data even when the phone is low on space
+if (navigator.storage && navigator.storage.persist) { navigator.storage.persist().catch(() => {}); }
+
+// Redraw when the app is reopened, since "days left" changes overnight
+document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+
+// Lets the app install and open offline (see sw.js)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+}
+</script>
+</body>
+</html>

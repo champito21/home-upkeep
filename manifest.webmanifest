@@ -1,0 +1,16 @@
+{
+  "name": "Home Upkeep",
+  "short_name": "Upkeep",
+  "description": "Track recurring home maintenance: filters, flushes, batteries, and more.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#13232e",
+  "theme_color": "#13232e",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
