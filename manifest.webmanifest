@@ -1,10 +1,10 @@
 {
-  "id": "home-upkeep",
+  "id": "/home-upkeep/",
   "name": "Home Upkeep",
   "short_name": "Upkeep",
   "description": "Track recurring home maintenance: filters, flushes, batteries, and more.",
-  "start_url": "./index.html",
-  "scope": "./",
+  "start_url": "/home-upkeep/index.html",
+  "scope": "/home-upkeep/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#13232e",
