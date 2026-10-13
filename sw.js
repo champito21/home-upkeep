@@ -2,7 +2,7 @@
 // Keeps a copy of the app's files so it opens with no signal.
 // Network first, so you get updates when online.
 
-const CACHE = 'home-upkeep-v4';   // change to v5, v6... to force everyone onto a new version
+const CACHE = 'home-upkeep-v5';   // change to v6, v7... to force everyone onto a new version
 
 const CORE_FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
